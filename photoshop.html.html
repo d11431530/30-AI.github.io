@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 數位影像工作坊 Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --panel-dark: #1e293b;
+            --accent-blue: #3b82f6;
+            --text-light: #f8fafc;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            font-family: 'Inter', system-ui, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .canvas-container {
+            background-image: 
+                linear-gradient(45deg, #1e293b 25%, transparent 25%), 
+                linear-gradient(-45deg, #1e293b 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #1e293b 75%), 
+                linear-gradient(-45deg, transparent 75%, #1e293b 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            position: relative;
+            cursor: crosshair;
+        }
+
+        .side-panel {
+            background-color: var(--panel-dark);
+            border-left: 1px solid #334155;
+            border-right: 1px solid #334155;
+        }
+
+        .tool-group {
+            border-bottom: 1px solid #334155;
+            padding-bottom: 1.25rem;
+            margin-bottom: 1.25rem;
+        }
+
+        input[type="range"] {
+            height: 6px;
+            -webkit-appearance: none;
+            background: #334155;
+            border-radius: 5px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .history-item {
+            font-size: 0.75rem;
+            padding: 0.5rem;
+            border-radius: 4px;
+            background: #0f172a;
+            margin-bottom: 4px;
+            border-left: 3px solid transparent;
+        }
+
+        .history-item.active {
+            border-left-color: var(--accent-blue);
+            background: #1e293b;
+        }
+
+        #dropZone.dragover {
+            background-color: rgba(59, 130, 246, 0.1);
+            border: 2px dashed var(--accent-blue);
+        }
+
+        .active-tool {
+            background-color: var(--accent-blue) !important;
+            color: white;
+        }
+    </style>
+</head>
+<body class="flex h-screen">
+
+    <!-- 左側控制面板 -->
+    <aside class="side-panel w-72 h-full flex flex-col p-5 overflow-y-auto">
+        <div class="mb-6">
+            <h1 class="text-xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
+                Workshop Pro
+            </h1>
+        </div>
+
+        <div class="tool-group">
+            <h2 class="text-xs font-bold text-slate-500 uppercase mb-3">檔案與基礎</h2>
+            <div class="space-y-2">
+                <button onclick="document.getElementById('fileInput').click()" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-md text-sm font-medium transition text-white">上傳圖片</button>
+                <input type="file" id="fileInput" accept="image/*" class="hidden">
+                <div class="flex gap-2">
+                    <button id="undoBtn" class="flex-1 bg-slate-700 hover:bg-slate-600 py-2 rounded text-xs disabled:opacity-50 text-white">復原 (Undo)</button>
+                    <button onclick="resetToOriginal()" class="flex-1 bg-rose-900/40 text-rose-300 py-2 rounded text-xs">重置</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 手動遮罩與筆刷工具 -->
+        <div class="tool-group">
+            <h2 class="text-xs font-bold text-slate-500 uppercase mb-3">手動遮罩 / 筆刷</h2>
+            <div class="space-y-3">
+                <div class="flex gap-2">
+                    <button id="maskModeBtn" onclick="toggleMaskMode()" class="flex-1 bg-slate-800 hover:bg-slate-700 py-2 rounded text-xs transition text-white">進入繪製模式</button>
+                </div>
+                <div id="maskControls" class="hidden space-y-3 p-2 bg-slate-900/50 rounded">
+                    <div class="grid grid-cols-1 gap-2">
+                        <button id="brushTypeErase" onclick="setBrushType('destination-out')" class="w-full bg-slate-700 py-1.5 rounded text-[10px] active-tool text-white">擦除內容 (去背)</button>
+                        <button id="brushTypeRestore" onclick="setBrushType('restore')" class="w-full bg-slate-700 py-1.5 rounded text-[10px] text-white">畫回原圖 (還原)</button>
+                        <button id="brushTypePaint" onclick="setBrushType('source-over')" class="w-full bg-slate-700 py-1.5 rounded text-[10px] text-white">自由畫筆 (塗鴉)</button>
+                    </div>
+                    
+                    <div id="colorPickerGroup" class="hidden">
+                        <label class="flex justify-between text-[11px] mb-1"><span>畫筆顏色</span></label>
+                        <input type="color" id="brushColor" value="#3b82f6" class="w-full h-8 bg-transparent cursor-pointer rounded">
+                    </div>
+
+                    <div>
+                        <label class="flex justify-between text-[11px] mb-1"><span>筆刷大小</span><span id="v-brush">20</span></label>
+                        <input type="range" id="r-brush" min="5" max="150" value="20" class="w-full">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tool-group">
+            <h2 class="text-xs font-bold text-slate-500 uppercase mb-3">濾鏡與特效</h2>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="applyFilter('grayscale')" class="bg-slate-800 hover:bg-slate-700 py-1.5 rounded text-xs text-white">黑白</button>
+                <button onclick="applyFilter('sepia')" class="bg-slate-800 hover:bg-slate-700 py-1.5 rounded text-xs text-white">復古</button>
+                <button onclick="applyFilter('invert')" class="bg-slate-800 hover:bg-slate-700 py-1.5 rounded text-xs text-white">負片</button>
+                <button onclick="applyFilter('sharpen')" class="bg-slate-800 hover:bg-slate-700 py-1.5 rounded text-xs text-white">銳化</button>
+            </div>
+        </div>
+
+        <div class="tool-group space-y-4">
+            <h2 class="text-xs font-bold text-slate-500 uppercase mb-1">影像精修 (高效預覽)</h2>
+            <p class="text-[10px] text-slate-400">已優化調整流暢度，可隨時歸零。</p>
+            <div>
+                <label class="flex justify-between text-[11px] mb-1"><span>亮度</span><span id="v-bright">100%</span></label>
+                <input type="range" id="r-bright" min="0" max="200" value="100" class="w-full">
+            </div>
+            <div>
+                <label class="flex justify-between text-[11px] mb-1"><span>模糊 (Blur)</span><span id="v-blur">0px</span></label>
+                <input type="range" id="r-blur" min="0" max="10" value="0" step="0.1" class="w-full">
+            </div>
+            <div class="flex gap-2 mt-2">
+                <button onclick="resetSliders(); requestUpdate();" class="flex-1 text-[10px] bg-slate-800 hover:bg-slate-700 py-1.5 rounded text-slate-300">↩ 恢復預設</button>
+                <button onclick="commitAdjustments()" class="flex-1 text-[10px] bg-blue-600/30 hover:bg-blue-600/50 py-1.5 rounded text-blue-300 font-bold border border-blue-500/30">✓ 應用調整</button>
+            </div>
+        </div>
+
+        <div class="tool-group">
+            <h2 class="text-xs font-bold text-slate-500 uppercase mb-3">文字浮水印</h2>
+            <div class="space-y-2">
+                <input type="text" id="watermarkText" placeholder="輸入文字..." class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 text-white">
+                <button onclick="addWatermark()" class="w-full bg-indigo-600 hover:bg-indigo-700 py-1.5 rounded text-xs text-white">放置中心浮水印</button>
+            </div>
+        </div>
+
+        <button id="downloadBtn" class="mt-4 w-full border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 py-2 rounded-md text-sm transition font-bold">導出圖片 (PNG)</button>
+    </aside>
+
+    <!-- 中間畫布區域 -->
+    <main id="dropZone" class="flex-1 canvas-container flex flex-col items-center justify-center p-8 overflow-hidden">
+        <div id="emptyPrompt" class="text-slate-500 text-center pointer-events-none">
+            <p class="text-lg mb-2">拖放圖片至此 或 點擊上傳</p>
+            <p class="text-sm opacity-50">支援 JPG, PNG</p>
+        </div>
+        <canvas id="mainCanvas" class="hidden shadow-2xl"></canvas>
+        
+        <div id="compareHint" class="hidden absolute bottom-6">
+            <button id="compareBtn" class="bg-white/10 backdrop-blur-md px-8 py-3 rounded-full text-sm font-bold border border-white/20 hover:bg-white/20 active:scale-95 transition flex items-center gap-2 text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+                按住對比原圖
+            </button>
+        </div>
+    </main>
+
+    <!-- 右側歷史紀錄 -->
+    <aside class="side-panel w-64 h-full flex flex-col p-4">
+        <h2 class="text-xs font-bold text-slate-500 uppercase mb-4 flex items-center gap-2">操作歷史紀錄</h2>
+        <div id="historyList" class="flex-1 overflow-y-auto pr-1"></div>
+    </aside>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const dropZone = document.getElementById('dropZone');
+        const historyList = document.getElementById('historyList');
+        const compareBtn = document.getElementById('compareBtn');
+        const undoBtn = document.getElementById('undoBtn');
+
+        let originalImg = null;
+        let lastCommittedImage = null;
+        let historyStack = []; 
+        let historyNames = []; 
+
+        let isMaskMode = false;
+        let isDrawing = false;
+        let brushSize = 20;
+        let brushType = 'destination-out'; // 預設為擦除
+        let lastX = 0;
+        let lastY = 0;
+
+        // 效能優化變數
+        let ticking = false;
+
+        // --- 檔案處理 ---
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) handleFile(file);
+        });
+
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            if (e.target.files[0]) handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    originalImg = img;
+                    const maxWidth = window.innerWidth * 0.6;
+                    const maxHeight = window.innerHeight * 0.7;
+                    let width = img.width;
+                    let height = img.height;
+                    const ratio = Math.min(maxWidth / width, maxHeight / height);
+                    if (width > maxWidth || height > maxHeight) {
+                        width *= ratio; height *= ratio;
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    historyStack = []; historyNames = [];
+                    updateLastCommitted();
+                    saveHistory("原始圖片");
+                    
+                    document.getElementById('emptyPrompt').classList.add('hidden');
+                    canvas.classList.remove('hidden');
+                    document.getElementById('compareHint').classList.remove('hidden');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // --- 歷史紀錄系統 ---
+        function saveHistory(name) {
+            const currentData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            historyStack.push(currentData);
+            historyNames.push(name);
+            if (historyStack.length > 20) { historyStack.shift(); historyNames.shift(); }
+            updateHistoryUI();
+            updateLastCommitted();
+        }
+
+        function updateLastCommitted() {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCanvas.getContext('2d').putImageData(ctx.getImageData(0, 0, canvas.width, canvas.height), 0, 0);
+            lastCommittedImage = tempCanvas;
+        }
+
+        function updateHistoryUI() {
+            historyList.innerHTML = '';
+            historyNames.forEach((name, index) => {
+                const item = document.createElement('div');
+                item.className = `history-item ${index === historyNames.length - 1 ? 'active' : ''}`;
+                item.textContent = `${index + 1}. ${name}`;
+                historyList.prepend(item);
+            });
+            undoBtn.disabled = historyStack.length <= 1;
+        }
+
+        undoBtn.onclick = () => {
+            if (historyStack.length > 1) {
+                historyStack.pop(); historyNames.pop();
+                const lastState = historyStack[historyStack.length - 1];
+                ctx.putImageData(lastState, 0, 0);
+                updateHistoryUI();
+                updateLastCommitted();
+                resetSliders(); 
+            }
+        };
+
+        // --- 影像精修預覽 ---
+        function requestUpdate() {
+            if (!ticking) {
+                window.requestAnimationFrame(() => {
+                    updateAdjustments();
+                    ticking = false;
+                });
+                ticking = true;
+            }
+        }
+
+        function updateAdjustments() {
+            if (!lastCommittedImage || isComparing) return;
+            const bright = document.getElementById('r-bright').value;
+            const blur = document.getElementById('r-blur').value;
+
+            document.getElementById('v-bright').textContent = bright + "%";
+            document.getElementById('v-blur').textContent = blur + "px";
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.filter = `brightness(${bright}%) blur(${blur}px)`;
+            ctx.drawImage(lastCommittedImage, 0, 0);
+            ctx.restore();
+        }
+
+        function commitAdjustments() {
+            const bright = document.getElementById('r-bright').value;
+            const blur = document.getElementById('r-blur').value;
+            if (bright == 100 && blur == 0) return;
+            
+            saveHistory(`精修: 亮度${bright}% / 模糊${blur}px`);
+            resetSliders();
+        }
+
+        ['r-bright', 'r-blur'].forEach(id => {
+            document.getElementById(id).addEventListener('input', requestUpdate);
+        });
+
+        function resetSliders() {
+            document.getElementById('r-bright').value = 100;
+            document.getElementById('r-blur').value = 0;
+            document.getElementById('v-bright').textContent = "100%";
+            document.getElementById('v-blur').textContent = "0px";
+        }
+
+        // --- 濾鏡功能 ---
+        function applyFilter(type) {
+            if (!lastCommittedImage) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(lastCommittedImage, 0, 0);
+            
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+
+            if (type === 'grayscale') {
+                for (let i = 0; i < data.length; i += 4) {
+                    const avg = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+                    data[i] = data[i+1] = data[i+2] = avg;
+                }
+            } else if (type === 'sepia') {
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i], g = data[i+1], b = data[i+2];
+                    data[i] = (r * 0.393) + (g * 0.769) + (b * 0.189);
+                    data[i+1] = (r * 0.349) + (g * 0.686) + (b * 0.168);
+                    data[i+2] = (r * 0.272) + (g * 0.534) + (b * 0.131);
+                }
+            } else if (type === 'invert') {
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i] = 255 - data[i]; data[i+1] = 255 - data[i+1]; data[i+2] = 255 - data[i+2];
+                }
+            } else if (type === 'sharpen') {
+                convolve([0, -1, 0, -1, 5, -1, 0, -1, 0]);
+                saveHistory("濾鏡: 銳化");
+                resetSliders();
+                return;
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            saveHistory("濾鏡: " + type);
+            resetSliders(); 
+        }
+
+        function convolve(weights) {
+            const side = Math.round(Math.sqrt(weights.length));
+            const halfSide = Math.floor(side/2);
+            const src = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const sw = src.width; const sh = src.height;
+            const output = ctx.createImageData(sw, sh);
+            const dst = output.data;
+            for (let y=0; y<sh; y++) {
+                for (let x=0; x<sw; x++) {
+                    const dstOff = (y*sw+x)*4;
+                    let r=0, g=0, b=0, a=src.data[dstOff+3];
+                    if (a === 0) { dst[dstOff+3] = 0; continue; }
+                    for (let cy=0; cy<side; cy++) {
+                        for (let cx=0; cx<side; cx++) {
+                            const scy = y + cy - halfSide; const scx = x + cx - halfSide;
+                            if (scy >= 0 && scy < sh && scx >= 0 && scx < sw) {
+                                const srcOff = (scy*sw+scx)*4;
+                                const wt = weights[cy*side+cx];
+                                r += src.data[srcOff] * wt; g += src.data[srcOff+1] * wt; b += src.data[srcOff+2] * wt;
+                            }
+                        }
+                    }
+                    dst[dstOff] = r; dst[dstOff+1] = g; dst[dstOff+2] = b; dst[dstOff+3] = a;
+                }
+            }
+            ctx.putImageData(output, 0, 0);
+        }
+
+        // --- 遮罩與筆刷工具功能 ---
+        function toggleMaskMode() {
+            isMaskMode = !isMaskMode;
+            const btn = document.getElementById('maskModeBtn');
+            const controls = document.getElementById('maskControls');
+            if (isMaskMode) {
+                btn.textContent = "退出繪製模式"; btn.classList.add('active-tool'); controls.classList.remove('hidden');
+            } else {
+                btn.textContent = "進入繪製模式"; btn.classList.remove('active-tool'); controls.classList.add('hidden');
+            }
+        }
+
+        function setBrushType(type) {
+            brushType = type;
+            document.getElementById('brushTypeErase').classList.toggle('active-tool', type === 'destination-out');
+            document.getElementById('brushTypeRestore').classList.toggle('active-tool', type === 'restore');
+            document.getElementById('brushTypePaint').classList.toggle('active-tool', type === 'source-over');
+            
+            // 只有在自由畫筆模式才顯示顏色選擇
+            document.getElementById('colorPickerGroup').classList.toggle('hidden', type !== 'source-over');
+        }
+
+        document.getElementById('r-brush').addEventListener('input', (e) => {
+            brushSize = parseInt(e.target.value);
+            document.getElementById('v-brush').textContent = brushSize;
+        });
+
+        canvas.addEventListener('mousedown', (e) => { 
+            if (isMaskMode && originalImg) { 
+                isDrawing = true; 
+                const rect = canvas.getBoundingClientRect();
+                lastX = e.clientX - rect.left;
+                lastY = e.clientY - rect.top;
+                draw(e); 
+            } 
+        });
+        
+        canvas.addEventListener('mousemove', (e) => { if (isDrawing) draw(e); });
+        
+        window.addEventListener('mouseup', () => { 
+            if (isDrawing) { 
+                isDrawing = false; 
+                saveHistory(brushType === 'source-over' ? "自由繪製" : "遮罩去背/還原"); 
+                resetSliders(); 
+            } 
+        });
+
+        function draw(e) {
+            if (!isDrawing || !isMaskMode) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left; 
+            const y = e.clientY - rect.top;
+            
+            ctx.save();
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.lineWidth = brushSize;
+
+            if (brushType === 'restore') {
+                // 畫回原圖 (還原)
+                ctx.globalCompositeOperation = 'source-over';
+                const pattern = ctx.createPattern(originalImg, 'no-repeat');
+                const scaleX = canvas.width / originalImg.width;
+                const scaleY = canvas.height / originalImg.height;
+                
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(x, y);
+                
+                ctx.save();
+                ctx.scale(scaleX, scaleY);
+                ctx.strokeStyle = pattern;
+                // 筆刷大小也需要依比例縮放來保持一致
+                ctx.lineWidth = brushSize / scaleX; 
+                // 由於使用了 pattern 描邊，我們將其繪製在縮放後的座標
+                ctx.stroke();
+                ctx.restore();
+            } else if (brushType === 'source-over') {
+                // 自由畫筆 (塗鴉)
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = document.getElementById('brushColor').value;
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            } else {
+                // 擦除邏輯 (去背)
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+            
+            ctx.restore();
+            lastX = x;
+            lastY = y;
+        }
+
+        function resetToOriginal() {
+            if (!originalImg) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.filter = 'none';
+            ctx.drawImage(originalImg, 0, 0, canvas.width, canvas.height);
+            resetSliders(); saveHistory("重置原圖");
+        }
+
+        function addWatermark() {
+            if (!lastCommittedImage) return;
+            const text = document.getElementById('watermarkText').value || "AI Workshop";
+            ctx.save();
+            ctx.font = `bold ${canvas.width / 15}px sans-serif`;
+            ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(text, canvas.width/2, canvas.height/2);
+            ctx.restore();
+            saveHistory("添加浮水印"); resetSliders();
+        }
+
+        // --- 對比功能 ---
+        let isComparing = false;
+        let tempState = null;
+        function startCompare() {
+            if (!originalImg || isComparing) return;
+            isComparing = true;
+            tempState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save(); ctx.filter = 'none'; ctx.drawImage(originalImg, 0, 0, canvas.width, canvas.height); ctx.restore();
+        }
+        function endCompare() {
+            if (!isComparing) return;
+            isComparing = false;
+            if (tempState) ctx.putImageData(tempState, 0, 0);
+        }
+        compareBtn.addEventListener('mousedown', startCompare);
+        window.addEventListener('mouseup', endCompare);
+        compareBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startCompare(); });
+        window.addEventListener('touchend', endCompare);
+
+        document.getElementById('downloadBtn').onclick = () => {
+            if (!originalImg) return;
+            const link = document.createElement('a');
+            link.download = `workshop_export.png`;
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+        };
+    </script>
+</body>
+</html>

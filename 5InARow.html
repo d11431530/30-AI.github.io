@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>五子棋 高中專研壓力版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #f3f4f6;
+            --container-bg: #ffffff;
+            --text-color: #1f2937;
+            --board-color: #e3c08d;
+            --line-color: #4a3728;
+            --cell-hover: rgba(255, 255, 255, 0.3);
+        }
+
+        .dark {
+            --bg-color: #0f172a;
+            --container-bg: #1e293b;
+            --text-color: #f8fafc;
+            --cell-hover: rgba(0, 0, 0, 0.2);
+        }
+
+        [data-theme='forest'] { --board-color: #2d5a27; --line-color: #1a3a16; }
+        [data-theme='obsidian'] { --board-color: #334155; --line-color: #0f172a; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            transition: all 0.3s ease;
+        }
+
+        .game-container {
+            text-align: center;
+            padding: 1.5rem;
+            background: var(--container-bg);
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            max-width: 95vw;
+            width: fit-content;
+        }
+
+        .board {
+            display: grid;
+            background-color: var(--board-color);
+            padding: 5px;
+            border: 3px solid var(--line-color);
+            margin: 15px auto;
+            position: relative;
+        }
+
+        .cell {
+            border: 1px solid var(--line-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            transition: background-color 0.2s;
+        }
+
+        .cell:hover { background-color: var(--cell-hover); }
+
+        .piece {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            user-select: none;
+        }
+
+        @keyframes popIn { from { transform: scale(0); } to { transform: scale(1); } }
+
+        .winning-cell { background-color: rgba(34, 197, 94, 0.6) !important; }
+
+        .btn-reset { background-color: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+        .dark .btn-reset { background-color: rgba(220, 38, 38, 0.2); color: #f87171; border-color: rgba(220, 38, 38, 0.4); }
+        .btn-restart { background-color: #2563eb; color: white; }
+        .btn-frustrated { background-color: #f59e0b; color: white; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0; top: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-content {
+            background-color: var(--container-bg);
+            color: var(--text-color);
+            padding: 2rem;
+            border-radius: 1.5rem;
+            max-width: 450px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .theme-circle {
+            width: 28px; height: 28px; border-radius: 50%; cursor: pointer; border: 3px solid transparent; transition: transform 0.2s;
+        }
+        .theme-circle.active { border-color: #3b82f6; transform: scale(1.1); }
+
+        .select-btn { color: #64748b; background-color: rgba(0,0,0,0.05); transition: all 0.2s; }
+        .dark .select-btn { color: #94a3b8; background-color: rgba(255,255,255,0.05); }
+        .active-btn { background-color: white; color: #1e293b; font-weight: 800; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .dark .active-btn { background-color: #475569; color: #ffffff; }
+
+        #frustrated-output {
+            min-height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            font-weight: 600;
+            color: #ef4444;
+        }
+        .dark #frustrated-output { color: #f87171; }
+
+        .thinking-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.1);
+            display: none; z-index: 10;
+        }
+
+        /* --- Blob 獎勵系統 2.0 --- */
+        .blob-container {
+            width: 70px;
+            height: 70px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            position: relative;
+        }
+
+        .blob-wrapper {
+            animation: bobbing 2.5s infinite ease-in-out;
+            position: relative;
+        }
+
+        @keyframes bobbing {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        .blob {
+            width: 45px;
+            height: 40px;
+            border-radius: 50% 50% 40% 40%;
+            position: relative;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: inset -4px -4px 10px rgba(0,0,0,0.1);
+        }
+
+        .eyes {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            transition: all 0.4s ease;
+        }
+        .eye {
+            width: 5px;
+            height: 7px;
+            background: #1e293b;
+            border-radius: 50%;
+            position: relative;
+        }
+
+        .mouth {
+            position: absolute;
+            bottom: 6px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 8px;
+            height: 3px;
+            border-bottom: 2px solid #1e293b;
+            border-radius: 50%;
+            transition: all 0.4s ease;
+        }
+
+        .crown {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.2));
+            animation: crown-shine 1s infinite alternate;
+        }
+        @keyframes crown-shine {
+            from { transform: translateX(-50%) translateY(0) scale(1); }
+            to { transform: translateX(-50%) translateY(-2px) scale(1.05); }
+        }
+
+        .blob-lv0 { background: #cbd5e1; }
+        .blob-lv0 .eye { height: 2px; transform: rotate(15deg); margin-top: 2px; }
+        .blob-lv0 .mouth { width: 6px; border-bottom: 0; border-top: 2px solid #1e293b; bottom: 8px; }
+
+        .blob-lv1 { background: #fb923c; }
+        .blob-lv1 .eye { height: 2px; border-radius: 0; margin-top: 2px; }
+        .blob-lv1 .mouth { width: 10px; border-bottom: 2px solid #1e293b; border-radius: 0; bottom: 10px; }
+
+        .blob-lv2 { background: #60a5fa; }
+        .blob-lv2 .eye { height: 6px; animation: blink 4s infinite; }
+        .blob-lv2 .mouth { width: 12px; height: 6px; border-bottom: 3px solid #1e293b; bottom: 6px; }
+        @keyframes blink { 0%, 90%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+
+        .blob-lv3 { background: #a855f7; box-shadow: 0 0 15px rgba(168, 85, 247, 0.4); }
+        .blob-lv3 .eye { height: 8px; width: 6px; }
+        .blob-lv3 .mouth { width: 16px; height: 8px; background: #1e293b; border-radius: 2px 2px 10px 10px; border: none; bottom: 6px; }
+        .blob-lv3 .crown { display: block; }
+    </style>
+</head>
+<body class="light">
+
+<div class="game-container">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-xl font-bold">高級五子棋 AI</h1>
+        <div class="flex gap-1">
+            <button onclick="toggleModal('help-modal', true)" class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10" title="玩法說明">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </button>
+            <button onclick="toggleModal('settings-modal', true)" class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10" title="遊戲設定">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1-2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+            <button onclick="toggleTheme()" class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10" title="切換深淺模式">
+                <svg id="theme-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Blob 與 分數合併行 -->
+    <div class="flex items-center gap-4 mb-4 bg-black/5 dark:bg-white/5 p-3 rounded-xl">
+        <!-- Blob 視圖 -->
+        <div class="blob-container">
+            <div class="blob-wrapper">
+                <div id="reward-blob" class="blob blob-lv0">
+                    <div class="crown">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="#fbbf24">
+                            <path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5Z" />
+                        </svg>
+                    </div>
+                    <div class="eyes">
+                        <div class="eye"></div>
+                        <div class="eye"></div>
+                    </div>
+                    <div class="mouth"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 flex-1 gap-2">
+            <div class="text-center border-r border-black/10 dark:border-white/10 pr-2">
+                <div class="text-[10px] uppercase opacity-60">最高連勝</div>
+                <div id="high-score" class="text-xl font-bold text-red-500">0</div>
+            </div>
+            <div class="text-center">
+                <div class="text-[10px] uppercase opacity-60">目前連勝</div>
+                <div id="current-score" class="text-xl font-bold text-blue-500">0</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="status" class="font-bold mb-2 h-6 text-sm">輪到 你 (🌚)</div>
+    
+    <div id="board-container" class="relative" data-theme="classic">
+        <div id="thinking" class="thinking-overlay rounded-sm"></div>
+        <div id="board" class="board rounded-sm shadow-inner"></div>
+    </div>
+
+    <div class="flex flex-col gap-3 mt-5">
+        <div class="flex gap-2">
+            <button class="btn-reset flex-1 py-3 rounded-xl text-xs font-bold transition-all" onclick="resetScores()">重置數據</button>
+            <button class="btn-restart flex-[2] py-3 rounded-xl text-sm font-black transition-all" onclick="resetGame()">重新開始</button>
+        </div>
+        <button class="btn-frustrated w-full py-3 rounded-xl text-sm font-bold transition-all" onclick="toggleModal('frustrated-modal', true)">心態炸裂？</button>
+    </div>
+</div>
+
+<!-- 說明彈窗 -->
+<div id="help-modal" class="modal">
+    <div class="modal-content shadow-2xl">
+        <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-500"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            遊戲玩法
+        </h2>
+        <div class="space-y-4 text-left text-sm leading-relaxed opacity-80">
+            <section>
+                <h3 class="font-bold text-base mb-1 text-blue-600 dark:text-blue-400">基本規則</h3>
+                <p>這是一個標準的五子棋遊戲。您執黑子 (🌚) 先手，AI 執白子 (🌝)。先在橫、豎、斜任何方向連成五子者獲勝。</p>
+            </section>
+            <section>
+                <h3 class="font-bold text-base mb-1 text-amber-600 dark:text-amber-400">進化 Blob</h3>
+                <p>棋盤上方的 Blob 會隨您的目前連勝次數進化。贏得越多，它就會變得越開心並戴上皇冠！</p>
+            </section>
+        </div>
+        <button onclick="toggleModal('help-modal', false)" class="mt-8 w-full bg-slate-800 text-white py-3 rounded-xl font-bold">了解</button>
+    </div>
+</div>
+
+<!-- 設定彈窗 -->
+<div id="settings-modal" class="modal">
+    <div class="modal-content shadow-2xl">
+        <h2 class="text-xl font-bold mb-6">⚙️ 遊戲設定</h2>
+        <div class="space-y-6 text-left">
+            <div>
+                <label class="text-sm font-semibold mb-3 block">AI 難度</label>
+                <div class="flex gap-2 bg-black/5 dark:bg-white/10 p-1.5 rounded-xl">
+                    <button onclick="setDifficulty('easy')" id="diff-easy" class="select-btn flex-1 py-2 rounded-lg text-xs">簡單</button>
+                    <button onclick="setDifficulty('medium')" id="diff-medium" class="select-btn flex-1 py-2 rounded-lg text-xs">普通</button>
+                    <button onclick="setDifficulty('hard')" id="diff-hard" class="select-btn flex-1 py-2 rounded-lg text-xs active-btn">困難</button>
+                </div>
+            </div>
+            <div>
+                <label class="text-sm font-semibold mb-3 block">棋盤主題</label>
+                <div class="flex gap-4">
+                    <div onclick="setBoardTheme('classic')" id="theme-classic" class="theme-circle active" style="background-color: #e3c08d;"></div>
+                    <div onclick="setBoardTheme('forest')" id="theme-forest" class="theme-circle" style="background-color: #2d5a27;"></div>
+                    <div onclick="setBoardTheme('obsidian')" id="theme-obsidian" class="theme-circle" style="background-color: #334155;"></div>
+                </div>
+            </div>
+            <div>
+                <label class="text-sm font-semibold mb-3 block">棋盤大小</label>
+                <div class="flex gap-2 bg-black/5 dark:bg-white/10 p-1.5 rounded-xl">
+                    <button onclick="changeBoardSize(5)" id="size-5" class="select-btn flex-1 py-2 rounded-lg text-xs transition-all">5x5</button>
+                    <button onclick="changeBoardSize(10)" id="size-10" class="select-btn flex-1 py-2 rounded-lg text-xs transition-all active-btn">10x10</button>
+                    <button onclick="changeBoardSize(20)" id="size-20" class="select-btn flex-1 py-2 rounded-lg text-xs transition-all">20x20</button>
+                </div>
+            </div>
+        </div>
+        <button onclick="toggleModal('settings-modal', false)" class="mt-8 w-full bg-blue-600 text-white py-3 rounded-xl font-bold">完成</button>
+    </div>
+</div>
+
+<!-- 心態抒發彈窗 -->
+<div id="frustrated-modal" class="modal">
+    <div class="modal-content shadow-2xl border border-black/10 dark:border-white/10">
+        <h2 class="text-xl font-bold mb-2 text-center">輸到心態崩了？</h2>
+        <p class="text-xs opacity-50 mb-6 text-center italic">「選一個你現在需要的頻率」</p>
+        <div id="frustrated-output" class="bg-black/5 dark:bg-white/5 p-5 rounded-xl mb-6 border border-dashed border-black/20 dark:border-white/20">
+            請點選下方按鈕獲取能量...
+        </div>
+        <div class="grid grid-cols-1 gap-3">
+            <button onclick="getFrustratedResponse('encourage')" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl font-bold transition-all">給點鼓勵吧 ✨</button>
+            <button onclick="getFrustratedResponse('mock')" class="w-full bg-rose-500 hover:bg-rose-600 text-white py-3 rounded-xl font-bold transition-all">我想被嘲諷 🤡</button>
+            <button onclick="getFrustratedResponse('homework')" class="w-full bg-slate-700 hover:bg-slate-800 text-white py-3 rounded-xl font-bold transition-all">家長碎碎念 (高中生版) 📝</button>
+        </div>
+        <button onclick="toggleModal('frustrated-modal', false)" class="mt-6 w-full text-xs opacity-40 hover:opacity-100 transition-opacity">算了，我調整好心情了</button>
+    </div>
+</div>
+
+<script>
+    let BOARD_SIZE = 10;
+    const WIN_COUNT = 5;
+    let DIFFICULTY = 'hard';
+    let currentPlayer = 'black'; 
+    let gameActive = true;
+    let gameState = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(null));
+    let currentWins = 0;
+    let highScore = localStorage.getItem('gomoku_high_score') || 0;
+
+    const EMOJIS = { black: '🌚', white: '🌝' };
+    const boardContainer = document.getElementById('board-container');
+    const boardElement = document.getElementById('board');
+    const statusElement = document.getElementById('status');
+    const thinkingElement = document.getElementById('thinking');
+    const frustratedOutput = document.getElementById('frustrated-output');
+    const highScoreEl = document.getElementById('high-score');
+    const currentScoreEl = document.getElementById('current-score');
+    const blobEl = document.getElementById('reward-blob');
+
+    highScoreEl.innerText = highScore;
+
+    const RESPONSES = {
+        encourage: [
+            "這步雖然沒算準，但你的大局觀其實進步很多喔！加油！💪",
+            "失敗是進步的燃料，剛才那局已經讓你的抗壓性更強了！✨",
+            "別在意這盤，AI 本來就是用來磨練強者的，再來一局！🔥",
+            "你的策略其實很有深度，只是差了一點點執行細節！"
+        ],
+        mock: [
+            "看你下棋，我以為你在幫 AI 慶祝五連珠，真是慷慨。🤡",
+            "如果你下棋的速度能分給讀書，台大大概已經發錄取通知給你了。🙃",
+            "這棋路走得精巧，精巧到連對手都在笑你。💨",
+            "輸給這個 AI？你還是去玩井字遊戲吧，那個比較適合你。🤡"
+        ],
+        homework: [
+            "還在耍廢？趕快去做專研！進度報告寫完了嗎？還在等教授聯絡？📝",
+            "與其在這裡輸給電腦，不如去背幾個單字，學測英文還要不要考？📚",
+            "自主學習計畫寫了嗎？學習歷程檔案上傳了嗎？別拿五子棋當藉口！",
+            "專研進度連個影子都沒有，你竟然還在這裡點棋盤？趕快去改你的研究報告！🔥",
+            "功課是不會自己寫完的，模擬考快到了，你確定還要繼續點？📝",
+            "你的專研是在研究『如何一直輸棋』嗎？如果是的話，你進行得很順利喔。趕快去工作！"
+        ]
+    };
+
+    function setDifficulty(level) {
+        DIFFICULTY = level;
+        document.querySelectorAll('[id^="diff-"]').forEach(btn => btn.classList.remove('active-btn'));
+        const activeBtn = document.getElementById(`diff-${level}`);
+        if(activeBtn) activeBtn.classList.add('active-btn');
+    }
+
+    function updateBlob() {
+        blobEl.classList.remove('blob-lv0', 'blob-lv1', 'blob-lv2', 'blob-lv3');
+        if (currentWins === 0) {
+            blobEl.classList.add('blob-lv0');
+        } else if (currentWins === 1) {
+            blobEl.classList.add('blob-lv1');
+        } else if (currentWins === 2) {
+            blobEl.classList.add('blob-lv2');
+        } else {
+            blobEl.classList.add('blob-lv3');
+        }
+    }
+
+    function getFrustratedResponse(type) {
+        const list = RESPONSES[type];
+        const random = list[Math.floor(Math.random() * list.length)];
+        frustratedOutput.innerText = random;
+    }
+
+    function toggleTheme() {
+        document.body.classList.toggle('dark');
+    }
+
+    function toggleModal(id, show) {
+        document.getElementById(id).style.display = show ? 'flex' : 'none';
+        if (id === 'frustrated-modal' && show) frustratedOutput.innerText = "請點選下方按鈕獲取能量...";
+    }
+
+    function setBoardTheme(themeName) {
+        boardContainer.setAttribute('data-theme', themeName);
+        document.querySelectorAll('.theme-circle').forEach(c => c.classList.remove('active'));
+        document.getElementById(`theme-${themeName}`).classList.add('active');
+    }
+
+    function changeBoardSize(size) {
+        BOARD_SIZE = size;
+        document.querySelectorAll('[id^="size-"]').forEach(btn => btn.classList.remove('active-btn'));
+        const activeBtn = document.getElementById(`size-${size}`);
+        if(activeBtn) activeBtn.classList.add('active-btn');
+        resetGame();
+    }
+
+    function createBoard() {
+        boardElement.innerHTML = '';
+        let cellSize = BOARD_SIZE === 5 ? 60 : (BOARD_SIZE === 10 ? 35 : 22);
+        let fontSize = BOARD_SIZE === 5 ? 40 : (BOARD_SIZE === 10 ? 24 : 16);
+        
+        boardElement.style.gridTemplateColumns = `repeat(${BOARD_SIZE}, ${cellSize}px)`;
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.style.width = `${cellSize}px`;
+                cell.style.height = `${cellSize}px`;
+                cell.onclick = () => handleMove(r, c, cell, fontSize);
+                boardElement.appendChild(cell);
+            }
+        }
+    }
+
+    function handleMove(row, col, cell, fontSize) {
+        if (!gameActive || currentPlayer !== 'black' || gameState[row][col]) return;
+        
+        placePiece(row, col, cell, fontSize);
+        if (gameActive) {
+            currentPlayer = 'white';
+            statusElement.innerText = "AI 正在算計中...";
+            thinkingElement.style.display = 'block';
+            setTimeout(() => aiMove(fontSize), 500);
+        }
+    }
+
+    function placePiece(row, col, cell, fontSize) {
+        gameState[row][col] = currentPlayer;
+        const piece = document.createElement('div');
+        piece.classList.add('piece');
+        piece.style.fontSize = `${fontSize}px`;
+        piece.innerText = EMOJIS[currentPlayer];
+        cell.appendChild(piece);
+
+        if (checkWin(row, col)) {
+            gameActive = false;
+            if (currentPlayer === 'black') {
+                currentWins++;
+                if (currentWins > highScore) {
+                    highScore = currentWins;
+                    localStorage.setItem('gomoku_high_score', highScore);
+                    highScoreEl.innerText = highScore;
+                }
+                statusElement.innerText = "🏆 你贏了！不愧是高中菁英！";
+                confetti({ particleCount: 150 });
+            } else {
+                currentWins = 0;
+                statusElement.innerText = "💀 AI 贏了，去寫功課吧。";
+            }
+            currentScoreEl.innerText = currentWins;
+            updateBlob();
+            return;
+        }
+        if (gameState.flat().every(v => v)) {
+            statusElement.innerText = "🤝 平手，再戰一局？";
+            gameActive = false;
+        }
+    }
+
+    function aiMove(fontSize) {
+        if (!gameActive) return;
+        let move = getBestMove();
+        const cell = boardElement.children[move.r * BOARD_SIZE + move.c];
+        placePiece(move.r, move.c, cell, fontSize);
+        if (gameActive) {
+            currentPlayer = 'black';
+            statusElement.innerText = `輪到 你 (${EMOJIS.black})`;
+        }
+        thinkingElement.style.display = 'none';
+    }
+
+    function getBestMove() {
+        let bestScore = -1, moves = [];
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                if (gameState[r][c]) continue;
+                
+                let score;
+                if (DIFFICULTY === 'hard') {
+                    score = evaluate(r, c, 'white') + evaluate(r, c, 'black') * 1.1;
+                } else if (DIFFICULTY === 'medium') {
+                    score = evaluate(r, c, 'white') * 0.9 + evaluate(r, c, 'black') * 0.8;
+                } else {
+                    score = evaluate(r, c, 'white') * 0.5 + evaluate(r, c, 'black') * 0.3;
+                    if (Math.random() > 0.4) score = Math.random() * 50; 
+                }
+                
+                if (score > bestScore) { bestScore = score; moves = [{r, c}]; }
+                else if (score === bestScore) moves.push({r, c});
+            }
+        }
+        return moves[Math.floor(Math.random() * moves.length)];
+    }
+
+    function evaluate(r, c, p) {
+        let total = 0;
+        const dirs = [[0,1], [1,0], [1,1], [1,-1]];
+        for (let [dr, dc] of dirs) {
+            let line = 1;
+            for (let i=1; i<5; i++) {
+                let nr = r+dr*i, nc = c+dc*i;
+                if (nr>=0 && nr<BOARD_SIZE && nc>=0 && nc<BOARD_SIZE && gameState[nr][nc] === p) line++; else break;
+            }
+            for (let i=1; i<5; i++) {
+                let nr = r-dr*i, nc = c-dc*i;
+                if (nr>=0 && nr<BOARD_SIZE && nc>=0 && nc<BOARD_SIZE && gameState[nr][nc] === p) line++; else break;
+            }
+            total += Math.pow(10, line);
+        }
+        return total;
+    }
+
+    function checkWin(row, col) {
+        const dirs = [[[0,1],[0,-1]], [[1,0],[-1,0]], [[1,1],[-1,-1]], [[1,-1],[-1,1]]];
+        for (let d of dirs) {
+            let count = 1, winCells = [[row, col]];
+            for (let [dr, dc] of d) {
+                let r = row+dr, c = col+dc;
+                while (r>=0 && r<BOARD_SIZE && c>=0 && c<BOARD_SIZE && gameState[r][c] === currentPlayer) {
+                    count++; winCells.push([r,c]); r += dr; c += dc;
+                }
+            }
+            if (count >= WIN_COUNT) {
+                winCells.forEach(([r,c]) => boardElement.children[r*BOARD_SIZE+c].classList.add('winning-cell'));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function resetScores() {
+        localStorage.removeItem('gomoku_high_score');
+        highScore = 0; currentWins = 0;
+        highScoreEl.innerText = 0; currentScoreEl.innerText = 0;
+        updateBlob();
+        resetGame();
+    }
+
+    function resetGame() {
+        currentPlayer = 'black'; gameActive = true;
+        gameState = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(null));
+        statusElement.innerText = `輪到 你 (${EMOJIS.black})`;
+        createBoard();
+    }
+
+    createBoard();
+    updateBlob();
+</script>
+
+</body>
+</html>

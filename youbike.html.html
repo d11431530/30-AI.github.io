@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台北市 YouBike 模式決策儀表板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        .map-wrapper {
+            position: relative;
+            height: 480px;
+            width: 100%;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            border-radius: 1rem;
+            z-index: 1;
+        }
+
+        .map-center-crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 999;
+            pointer-events: none;
+            color: #ef4444;
+            opacity: 0.8;
+        }
+
+        .locate-me-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 1000;
+            background: white;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            cursor: pointer;
+        }
+
+        .loading-spinner {
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border-left-color: #f59e0b;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .custom-marker { display: flex; justify-content: center; align-items: center; }
+        .marker-pin {
+            width: 28px;
+            height: 28px;
+            border-radius: 50% 50% 50% 0;
+            background: #f59e0b;
+            position: absolute;
+            transform: rotate(-45deg);
+            left: 50%;
+            top: 50%;
+            margin: -14px 0 0 -14px;
+            border: 2px solid white;
+        }
+        .marker-pin.nearest { background: #ef4444; z-index: 999; scale: 1.1; }
+        .marker-pin.filtered { background: #cbd5e1; }
+        .marker-pin::after {
+            content: '';
+            width: 12px;
+            height: 12px;
+            margin: 6px 0 0 6px;
+            background: #fff;
+            position: absolute;
+            border-radius: 50%;
+        }
+
+        .mode-btn.active {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #2563eb;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-6 bg-slate-50">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="flex flex-col md:flex-row md:items-end justify-between mb-6 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-slate-800 tracking-tight">YouBike <span class="text-amber-500">2.0</span> 決策導覽</h1>
+                <p class="text-slate-500 text-sm mt-1">根據您的急迫程度切換過濾模式</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <div class="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+                    <button onclick="setMode('strict')" id="mode-strict" class="mode-btn px-3 py-1.5 text-xs font-bold rounded-md transition-all text-slate-600 hover:bg-slate-50">🛡️ Strict</button>
+                    <button onclick="setMode('risk')" id="mode-risk" class="mode-btn active px-3 py-1.5 text-xs font-bold rounded-md transition-all text-slate-600 hover:bg-slate-50">⚖️ Risk</button>
+                    <button onclick="setMode('fast')" id="mode-fast" class="mode-btn px-3 py-1.5 text-xs font-bold rounded-md transition-all text-slate-600 hover:bg-slate-50">⚡ Fast</button>
+                </div>
+                <button id="fetchBtn" class="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-2">
+                    <svg id="refreshIcon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path></svg>
+                    更新
+                </button>
+            </div>
+        </header>
+
+        <div id="statusContainer" class="mb-4 rounded-xl border border-blue-100 bg-blue-50/50 p-3 px-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div id="statusLoader" class="loading-spinner"></div>
+                <div>
+                    <p id="statusText" class="text-xs font-bold text-blue-800">正在同步...</p>
+                    <p id="statusDetail" class="text-[10px] text-blue-600">當前模式：⚖️ Risk (預測抵達風險)</p>
+                </div>
+            </div>
+            <button onclick="map.flyTo([25.0478, 121.5170], 16)" class="text-[10px] font-bold text-blue-700 bg-white px-2 py-1 rounded shadow-sm border border-blue-100">台北車站</button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2">
+                <div class="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden">
+                    <div class="map-wrapper">
+                        <div id="map"></div>
+                        <div class="map-center-crosshair">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M3 12h3m12 0h3M12 3v3m0 12v3"></path></svg>
+                        </div>
+                        <div id="locateBtn" class="locate-me-btn">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="dataContainer" class="space-y-3 h-[480px] lg:h-[496px] overflow-y-auto pr-1">
+                <div class="flex flex-col items-center justify-center h-full text-slate-400">載入中...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const API_URL = 'https://tcgbusfs.blob.core.windows.net/dotapp/youbike/v2/youbike_immediate.json';
+        const dataContainer = document.getElementById('dataContainer');
+        const statusText = document.getElementById('statusText');
+        const statusDetail = document.getElementById('statusDetail');
+        const statusLoader = document.getElementById('statusLoader');
+
+        let map = L.map('map', { zoomControl: false }).setView([25.0478, 121.5170], 16);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        let markersGroup = L.layerGroup().addTo(map);
+        let allStationsData = [];
+        let previousDataMap = new Map();
+        let currentMode = 'risk'; // 'strict', 'risk', 'fast'
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`mode-${mode}`).classList.add('active');
+            
+            const modeNames = { strict: '🛡️ Strict (只看保險站點)', risk: '⚖️ Risk (預測抵達風險)', fast: '⚡ Fast (只求最近)' };
+            statusDetail.innerText = `當前模式：${modeNames[mode]}`;
+            refreshUI();
+        }
+
+        function refreshUI() {
+            if (allStationsData.length === 0) return;
+            const center = map.getCenter();
+            dataContainer.innerHTML = '';
+            markersGroup.clearLayers();
+
+            let processed = allStationsData
+                .map(s => {
+                    const dist = getDistance(center.lat, center.lng, s.latitude, s.longitude);
+                    const prev = previousDataMap.get(s.sno);
+                    const bikes = s.available_rent_bikes;
+                    const diff = prev ? (bikes - prev.available_rent_bikes) : 0;
+                    
+                    let label = "⏳ Middle ground";
+                    let colorClass = "text-amber-600 bg-amber-50 border-amber-100";
+                    let score = 2; // 用於排序或過濾
+
+                    if (bikes <= 2 && (diff < 0 || bikes === 0)) {
+                        label = "⚠️ Likely gone";
+                        colorClass = "text-red-600 bg-red-50 border-red-100 font-bold";
+                        score = 1;
+                    } else if (bikes >= 5) {
+                        label = "✅ Safe bet";
+                        colorClass = "text-emerald-600 bg-emerald-50 border-emerald-100 font-bold";
+                        score = 3;
+                    }
+
+                    return { ...s, dist, label, colorClass, score, diff };
+                })
+                .sort((a, b) => a.dist - b.dist);
+
+            // 根據模式過濾
+            if (currentMode === 'strict') {
+                processed = processed.filter(s => s.score === 3);
+            } else if (currentMode === 'fast') {
+                // 不過濾，直接取最近
+            } else {
+                // Risk 模式顯示前 20 個，但保留風險提示
+            }
+
+            const displayList = processed.slice(0, 20);
+
+            if (displayList.length === 0) {
+                dataContainer.innerHTML = '<div class="h-full flex items-center justify-center text-slate-400 text-sm italic p-10 text-center">此區域沒有符合「保險模式」的站點，請嘗試切換模式或移動地圖。</div>';
+                return;
+            }
+
+            displayList.forEach((station, index) => {
+                const card = document.createElement('div');
+                card.className = `bg-white p-4 rounded-xl shadow-sm border border-slate-100 cursor-pointer hover:border-blue-200 transition-all ${index === 0 ? 'ring-2 ring-blue-50 border-blue-200' : ''}`;
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="font-bold text-slate-800 text-sm">${station.sna.replace('YouBike2.0_', '')}</h3>
+                        <div class="px-2 py-0.5 rounded-[4px] text-[9px] border ${station.colorClass}">
+                            ${station.label}
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1 flex items-center gap-3 bg-slate-50 p-2 rounded-lg">
+                            <div class="text-center">
+                                <span class="block text-[9px] text-slate-400 uppercase font-bold">Bikes</span>
+                                <span class="text-xl font-black text-slate-700">${station.available_rent_bikes}</span>
+                            </div>
+                            <div class="h-8 w-[1px] bg-slate-200"></div>
+                            <div class="text-center">
+                                <span class="block text-[9px] text-slate-400 uppercase font-bold">Space</span>
+                                <span class="text-xl font-black text-slate-700">${station.available_return_bikes}</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-[10px] font-bold text-blue-600">${Math.round(station.dist)}m</p>
+                            <p class="text-[9px] text-slate-400">約 ${Math.ceil(station.dist / 80)} min</p>
+                        </div>
+                    </div>
+                `;
+                card.onclick = () => map.flyTo([station.latitude, station.longitude], 18);
+                dataContainer.appendChild(card);
+
+                L.marker([station.latitude, station.longitude], {
+                    icon: L.divIcon({ 
+                        className: 'custom-marker', 
+                        html: `<div class="marker-pin ${index === 0 ? 'nearest' : ''} ${station.score < 2 && currentMode !== 'fast' ? 'filtered' : ''}"></div>`, 
+                        iconSize: [28, 40], 
+                        iconAnchor: [14, 40] 
+                    })
+                }).addTo(markersGroup);
+            });
+        }
+
+        async function fetchStations() {
+            try {
+                const res = await fetch(`${API_URL}?t=${Date.now()}`);
+                const newData = await res.json();
+                if (allStationsData.length > 0) {
+                    allStationsData.forEach(s => previousDataMap.set(s.sno, s));
+                }
+                allStationsData = newData;
+                refreshUI();
+            } catch (e) {}
+        }
+
+        function startLocate() {
+            statusText.innerText = "定位中...";
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => handleLocate(pos.coords.latitude, pos.coords.longitude, "GPS"),
+                    () => handleLocate(25.0478, 121.5170, "預設"),
+                    { timeout: 4000 }
+                );
+            }
+        }
+
+        function handleLocate(lat, lng, type) {
+            statusText.innerText = "連線中";
+            statusLoader.classList.add('hidden');
+            map.flyTo([lat, lng], 16);
+            L.circleMarker([lat, lng], { radius: 6, fillColor: "#3b82f6", color: "#fff", weight: 2, fillOpacity: 1 }).addTo(map);
+        }
+
+        map.on('moveend', refreshUI);
+        document.getElementById('fetchBtn').addEventListener('click', fetchStations);
+        document.getElementById('locateBtn').addEventListener('click', startLocate);
+
+        window.onload = async () => {
+            await fetchStations();
+            startLocate();
+            setInterval(fetchStations, 60000);
+        };
+    </script>
+</body>
+</html>
