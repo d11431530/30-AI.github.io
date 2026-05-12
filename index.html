@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>極致主義作品集 - 低彩度版</title>
+    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@900&family=Noto+Sans+TC:wght@900&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* 低飽和度配色 */
+            --muted-red: #A67B71;
+            --muted-olive: #6B705C;
+            --muted-sand: #CB997E;
+            --muted-cream: #DDBEA9;
+            --soft-white: #FFE8D6;
+            --dark-charcoal: #333333;
+            --border-width: 5px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            cursor: crosshair;
+        }
+
+        body {
+            background-color: var(--soft-white);
+            background-image: 
+                radial-gradient(var(--muted-cream) 1.5px, transparent 1.5px);
+            background-size: 25px 25px;
+            overflow-x: hidden;
+            font-family: 'Space Grotesk', 'Noto Sans TC', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 幾何背景裝飾 - 調整為低彩度色塊 */
+        .deco-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .deco-shape {
+            position: absolute;
+            border: var(--border-width) solid var(--dark-charcoal);
+            opacity: 0.8;
+        }
+
+        .deco-1 { width: 35vw; height: 35vw; background: var(--muted-red); top: -10%; left: -5%; transform: rotate(-10deg); }
+        .deco-2 { width: 25vw; height: 45vw; background: var(--muted-sand); bottom: -15%; right: 2%; transform: rotate(8deg); }
+        .deco-3 { width: 18vw; height: 18vw; border-radius: 50%; background: var(--muted-olive); top: 15%; right: 12%; }
+
+        .container {
+            position: relative;
+            z-index: 10;
+            width: 90%;
+            max-width: 900px;
+            padding: 40px;
+        }
+
+        h1 {
+            font-family: 'Unbounded', sans-serif;
+            font-size: clamp(2.5rem, 8vw, 5.5rem);
+            color: var(--soft-white);
+            text-transform: uppercase;
+            line-height: 0.85;
+            margin-bottom: 60px;
+            background: var(--dark-charcoal);
+            padding: 25px;
+            display: inline-block;
+            transform: rotate(-1.5deg);
+            box-shadow: 12px 12px 0px var(--muted-red);
+        }
+
+        .nav-links {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 25px;
+            transform: rotate(0.5deg);
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 30px 45px;
+            font-size: clamp(1.1rem, 3.5vw, 2rem);
+            font-weight: 900;
+            text-decoration: none;
+            color: var(--dark-charcoal);
+            background: var(--soft-white);
+            border: var(--border-width) solid var(--dark-charcoal);
+            box-shadow: 10px 10px 0px var(--dark-charcoal);
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        /* 個別按鈕低調配色 */
+        .btn:nth-child(1) { background: var(--muted-cream); }
+        .btn:nth-child(2) { background: var(--muted-olive); color: var(--soft-white); }
+        .btn:nth-child(3) { background: var(--muted-red); color: var(--soft-white); }
+
+        .btn:hover {
+            transform: translate(4px, 4px);
+            box-shadow: 0px 0px 0px var(--dark-charcoal);
+            filter: contrast(1.1);
+        }
+
+        .btn .num {
+            font-size: 0.9rem;
+            letter-spacing: 2px;
+            margin-right: 20px;
+            text-decoration: underline;
+        }
+
+        .btn .arrow {
+            font-size: 2.5rem;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .btn:hover .arrow {
+            transform: translateX(20px);
+        }
+
+        /* 背景浮動裝飾文字 - 顏色調得更淡 */
+        .floating-text {
+            position: fixed;
+            font-size: 15vw;
+            font-weight: 900;
+            color: rgba(0,0,0,0.03);
+            z-index: -2;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="deco-container">
+        <div class="deco-shape deco-1"></div>
+        <div class="deco-shape deco-2"></div>
+        <div class="deco-shape deco-3"></div>
+    </div>
+
+    <div class="floating-text" style="top: 5%; left: -2%;">ARCHIVE</div>
+    <div class="floating-text" style="bottom: 5%; right: -2%;">WORKS</div>
+
+    <div class="container">
+        <h1>SELECTED<br>WORKS_</h1>
+        
+        <nav class="nav-links">
+            <a href="5InARow.html" class="btn">
+                <span><span class="num">NO.01</span>FIVE-IN-A-ROW</span>
+                <span class="arrow">→</span>
+            </a>
+            <a href="photoshop.html" class="btn">
+                <span><span class="num">NO.02</span>PHOTO STUDIO</span>
+                <span class="arrow">→</span>
+            </a>
+            <a href="youbike.html" class="btn">
+                <span><span class="num">NO.03</span>YOUBIKE MAP</span>
+                <span class="arrow">→</span>
+            </a>
+        </nav>
+    </div>
+
+    <script>
+        // 平滑的視差位移
+        document.addEventListener('mousemove', (e) => {
+            const shapes = document.querySelectorAll('.deco-shape');
+            const moveX = (e.clientX - window.innerWidth / 2) * 0.015;
+            const moveY = (e.clientY - window.innerHeight / 2) * 0.015;
+            
+            shapes.forEach((shape, index) => {
+                const factor = (index + 1) * 0.4;
+                shape.style.transform = `translate(${moveX * factor}px, ${moveY * factor}px) rotate(${(index === 0 ? -10 : index === 1 ? 8 : 0)}deg)`;
+            });
+        });
+
+        // 懸停時的隨機微幅旋轉，增加手工感
+        const btns = document.querySelectorAll('.btn');
+        btns.forEach(btn => {
+            btn.addEventListener('mouseenter', () => {
+                const randomRot = (Math.random() - 0.5) * 3;
+                btn.style.transform = `translate(4px, 4px) rotate(${randomRot}deg)`;
+            });
+            btn.addEventListener('mouseleave', () => {
+                btn.style.transform = '';
+            });
+        });
+    </script>
+</body>
+</html>
